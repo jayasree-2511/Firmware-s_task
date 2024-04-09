@@ -1,0 +1,49 @@
+#include <avr/io.h>
+#include <avr/eeprom.h>
+#include <util/delay.h>
+
+#define F_CPU 16000000UL  // Assuming 16MHz clock frequency
+#define BAUD_RATE 2400    // UART baud rate
+#define UART_BAUD_CALC(BaudRate, F_CPU) ((F_CPU)/((BaudRate)*16UL)-1)
+
+void uart_init() {
+    UBRR0H = (uint8_t)(UART_BAUD_CALC(BAUD_RATE, F_CPU) >> 8);
+    UBRR0L = (uint8_t)(UART_BAUD_CALC(BAUD_RATE, F_CPU));
+    UCSR0B |= (1 << RXEN0) | (1 << TXEN0);   // Enable transmitter and receiver
+    UCSR0C |= (1 << UCSZ00) | (1 << UCSZ01); // Set frame: 8data, 1stop bit
+}
+
+unsigned char uart_receive(void) {
+    while (!(UCSR0A & (1 << RXC0)));   // Wait for data to be received
+    return UDR0;                        // Get and return received data from buffer
+}
+
+void eeprom_init() {
+    EECR |= (1 << EEMPE);  // Set Master Write Enable
+    EECR |= (1 << EEPE);   // Set Write Enable
+}
+
+void eeprom_write(uint16_t addr, uint8_t data) {
+    while (EECR & (1 << EEPE));  // Wait for completion of previous write
+    EEAR = addr;                 // Set EEPROM address
+    EEDR = data;                 // Set data to write
+    EECR |= (1 << EEMPE);        // Set Master Write Enable
+    EECR |= (1 << EEPE);         // Set Write Enable
+}
+
+int main(void) {
+    uart_init();   // Initialize UART
+    eeprom_init(); // Initialize EEPROM
+    
+    unsigned char data;
+    uint16_t addr = 0;
+    
+    while (1) {
+        data = uart_receive();     // Receive data via UART
+        eeprom_write(addr++, data); // Write data to EEPROM
+        // Echo back the received data
+        while (!(UCSR0A & (1 << UDRE0))); // Wait for empty transmit buffer
+        UDR0 = data;                       // Put data into buffer, sends the data
+    }
+    return 0;
+}
